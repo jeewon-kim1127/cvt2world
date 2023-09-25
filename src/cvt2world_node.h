@@ -4,12 +4,12 @@
 using namespace std;
 
 #include <cstdio>
-#include <rclcpp/rclcpp.hpp>
+#include <ros/ros.h>
 
 #include <thread>
 #include <mutex>
-#include <nav_msgs/msg/odometry.hpp>
-#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <nav_msgs/Odometry.h>
+#include <sensor_msgs/PointCloud2.h>
 
 #include <queue>
 #include <eigen3/Eigen/Dense>
@@ -23,7 +23,3 @@ using namespace std;
 #include <pcl/PCLPointCloud2.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl_conversions/pcl_conversions.h>
-
-#define ROS_INFO RCUTILS_LOG_INFO
-#define ROS_WARN RCUTILS_LOG_WARN
-#define ROS_ERROR RCUTILS_LOG_ERROR

@@ -1,0 +1,8 @@
+<launch>
+	<node pkg="cvt2world" type="cvt2world_node" name="cvt2world_node">
+
+		<remap from="/depth_cloud_in" to="/UAV3/camera/depth/color/points" />
+        <remap from="/pose_cloud_in" to="/UAV3/vins_estimator/camera_pose" />
+
+	</node>
+</launch>

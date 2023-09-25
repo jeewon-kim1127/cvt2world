@@ -1,29 +1,29 @@
 #include "cvt2world_node.h"
 
 Eigen::Matrix4d T_wc = Eigen::Matrix4d::Identity();
-rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_point_cloud;
+ros::Publisher pub_point_cloud;
 
-std::string POSE_TOPIC="/vins_estimator/camera_pose";
-std::string DEPTH_TOPIC="/UAV3/camera/depth/color/points";
+// std::string POSE_TOPIC="/vins_estimator/camera_pose";
+// std::string DEPTH_TOPIC="/camera/depth/color/points";
 std::string PUBLISH_DEPTH_TOPIC="/depth_cloud";
 
-queue<sensor_msgs::msg::PointCloud2::ConstPtr> depth_buf;
-queue<nav_msgs::msg::Odometry::ConstPtr> pose_buf;
+queue<sensor_msgs::PointCloud2::ConstPtr> depth_buf;
+queue<nav_msgs::Odometry::ConstPtr> pose_buf;
 std::mutex m_buf;
 
-void registerPub(rclcpp::Node::SharedPtr n)
+void registerPub(ros::NodeHandle n)
 {
-    pub_point_cloud= n->create_publisher<sensor_msgs::msg::PointCloud2>(PUBLISH_DEPTH_TOPIC, 100);
+    pub_point_cloud= n.advertise<sensor_msgs::PointCloud2>(PUBLISH_DEPTH_TOPIC, 100);
 }
 
-void pose_callback(const nav_msgs::msg::Odometry::SharedPtr pose_msg)
+void pose_callback(const nav_msgs::OdometryConstPtr pose_msg)
 {
     m_buf.lock();
     pose_buf.push(pose_msg);
     m_buf.unlock();
 }
 
-void depth_callback(const sensor_msgs::msg::PointCloud2::SharedPtr pcl_msg)
+void depth_callback(const sensor_msgs::PointCloud2ConstPtr pcl_msg)
 {
     m_buf.lock();
     depth_buf.push(pcl_msg);
@@ -63,15 +63,15 @@ void sync_process()
 {
     while(1)
     {
-        nav_msgs::msg::Odometry::ConstPtr pose_msg = NULL;
-        sensor_msgs::msg::PointCloud2::ConstPtr depth_msg = NULL;
+        nav_msgs::Odometry::ConstPtr pose_msg = NULL;
+        sensor_msgs::PointCloud2::ConstPtr depth_msg = NULL;
         double time = 0;
 
         m_buf.lock();
         if(!depth_buf.empty() and !pose_buf.empty())
         {
-            double t_depth = depth_buf.front()->header.stamp.sec + depth_buf.front()->header.stamp.nanosec * (1e-9);
-            double t_pose  = pose_buf.front()->header.stamp.sec  + pose_buf.front()->header.stamp.nanosec * (1e-9);
+            double t_depth = depth_buf.front()->header.stamp.sec + depth_buf.front()->header.stamp.nsec * (1e-9);
+            double t_pose  = pose_buf.front()->header.stamp.sec  + pose_buf.front()->header.stamp.nsec * (1e-9);
 
             // 0.003s sync tolerance
             if(t_depth < t_pose - 0.003)
@@ -86,7 +86,7 @@ void sync_process()
             }
             else
             {
-                double totla_begin = rclcpp::Clock().now().seconds();
+                double totla_begin = ros::Time::now().toSec();
                 time = t_depth;
                 depth_msg = depth_buf.front();
                 depth_buf.pop();
@@ -123,21 +123,21 @@ void sync_process()
                 pcl::PointCloud<pcl::PointXYZ>::Ptr depth_world(new pcl::PointCloud<pcl::PointXYZ>());
                 pcl::transformPointCloud(*depth_cloud, *depth_world, T_wc);
 
-                double begin = rclcpp::Clock().now().seconds();
+                double begin = ros::Time::now().toSec();
                 pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_depth_world = filterCloud(depth_world);
-                double end = rclcpp::Clock().now().seconds();
+                double end = ros::Time::now().toSec();
                 cout<<"filtering time: "<<end-begin<<endl;
 
-                sensor_msgs::msg::PointCloud2 depth_world_msg;
+                sensor_msgs::PointCloud2 depth_world_msg;
 
                 pcl::toROSMsg(*filtered_depth_world, depth_world_msg);  //filter depth cloud
                 //pcl::toROSMsg(*depth_world, depth_world_msg); //do not filter depth cloud, but change coord
 
                 depth_world_msg.header.frame_id = "world";
 
-                pub_point_cloud->publish(depth_world_msg);
+                pub_point_cloud.publish(depth_world_msg);
 
-                double total_end = rclcpp::Clock().now().seconds();
+                double total_end = ros::Time::now().toSec();
                 cout<<"total time: "<<total_end-totla_begin<<endl;
 
             }
@@ -151,16 +151,17 @@ void sync_process()
 
 int main(int argc, char ** argv)
 {
-    rclcpp::init(argc, argv);
-	auto n = rclcpp::Node::make_shared("cvt2world");
+    ros::init(argc, argv, "cvt2world");
+	auto n = ros::NodeHandle("~");
 
-    auto sub_pose = n->create_subscription<nav_msgs::msg::Odometry>(POSE_TOPIC, rclcpp::QoS(rclcpp::KeepLast(100)), pose_callback);
-    auto sub_depth = n->create_subscription<sensor_msgs::msg::PointCloud2>(DEPTH_TOPIC, rclcpp::QoS(rclcpp::KeepLast(100)), depth_callback);
+    ros::Subscriber sub_pose = n.subscribe("/pose_cloud_in",1000, pose_callback);
+    ros::Subscriber sub_depth = n.subscribe("/depth_cloud_in", 1000, depth_callback);
     registerPub(n);
     std::thread sync_thread{sync_process};
 
     
-    rclcpp::spin(n);
+    ros::spin();
+
 
     return 0;
 }
